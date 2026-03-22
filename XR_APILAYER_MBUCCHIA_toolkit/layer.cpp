@@ -937,6 +937,30 @@ namespace {
                 }
             }
 
+            // Reserve per-frame buffer and start background writer thread
+            mFrameBuffer.reserve(10000);
+            mFrameFlushBuffer.reserve(10000);
+            mWriterRunning = true;
+            mWriterThread = std::thread([this]() {
+                while (mWriterRunning || !mFrameFlushBuffer.empty()) {
+                    std::unique_lock<std::mutex> lock(mFrameBufferMutex);
+                    mWriterCV.wait_for(lock, std::chrono::seconds(5));
+                    std::swap(mFrameBuffer, mFrameFlushBuffer);
+                    lock.unlock();
+            
+                    if (mlogFrames.is_open()) {
+                        for (const auto& f : mFrameFlushBuffer) {
+                            mlogFrames << f.timestampNs << ","
+                                       << f.appCpuUs    << ","
+                                       << f.renderCpuUs << ","
+                                       << f.appGpuUs    << "\n";
+                        }
+                        mlogFrames.flush();
+                    }
+                    mFrameFlushBuffer.clear();
+                }
+            });
+
             return result;
         }
 
