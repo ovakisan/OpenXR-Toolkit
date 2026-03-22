@@ -1,3 +1,17 @@
+# Custom version to add per-frame logging
+
+>NOTE: Vibe coded.
+
+- Added per-frame logging for more precise frametime logging etc.
+- Outputs per-frame csv at the same location as the average frametimes csv
+
+To make sense of results use analyze_frames.py python script or create your own.
+
+<img width="1366" height="1209" alt="image" src="https://github.com/user-attachments/assets/303bd611-3ca5-47d0-bd15-afeabe5e839c" />
+
+
+
+_____________________________________________________________________________________________________
 # OpenXR Toolkit
 
 This software provides a collection of useful features to customize and improve existing OpenXR applications,
