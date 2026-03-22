@@ -69,6 +69,14 @@ namespace {
         bool registeredWithFrameAnalyzer{false};
     };
 
+    struct FrameRecord {
+        long long timestampNs;  // steady_clock nanoseconds
+        uint64_t appCpuUs;
+        uint64_t renderCpuUs;
+        uint64_t appGpuUs;
+    };
+
+
     class OpenXrLayer : public toolkit::OpenXrApi {
       public:
         OpenXrLayer() = default;
