@@ -1001,6 +1001,16 @@ namespace {
                     m_graphicsDevice->flushContext(true);
                 }
 
+                // Shut down per-frame writer thread and flush remaining buffer
+                m_writerRunning = false;
+                m_writerCV.notify_one();
+                if (m_writerThread.joinable()) {
+                    m_writerThread.join();
+                }
+                m_frameBuffer.clear();
+                m_frameFlushBuffer.clear();
+
+
                 // Cleanup session resources.
                 if (m_viewSpace != XR_NULL_HANDLE) {
                     xrDestroySpace(m_viewSpace);
