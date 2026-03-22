@@ -1045,7 +1045,11 @@ namespace {
         bool m_evaluateHapticsGesture{false};
         XrTime m_lastKeepalive{0};
 
-        using CacheEntry = std::pair<XrTime, XrHandJointLocationEXT[XR_HAND_JOINT_COUNT_EXT]>;
+        
+        struct CacheEntry {
+            XrTime first;
+            std::array<XrHandJointLocationEXT, XR_HAND_JOINT_COUNT_EXT> second;
+        };
         mutable std::map<XrSpace, std::deque<CacheEntry>[HandCount]> m_cachedHandJointsPoses;
         mutable std::mutex m_cacheLock;
         mutable std::optional<XrSpace> m_preferredBaseSpace;
