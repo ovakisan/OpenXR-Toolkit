@@ -2359,8 +2359,13 @@ namespace {
 
                     // Write headers.
                     m_logStats << "time,FPS,appCPU (us),renderCPU (us),appGPU (us),VRAM (MB),VRAM (%)\n";
+                    // ADD: open the per-frame file alongside mlogStats
+                    std::string frameLogFile = (localAppData / "stats" / std::string(buf)).string() + "_frames.csv";
+                    mlogFrames.open(frameLogFile, std::ios_base::ate);
+                    mlogFrames << "timestamp_ns,appCPU_us,renderCPU_us,appGPU_us\n";
                 } else {
                     m_logStats.close();
+                    mlogFrames.close();
                 }
             }
 
