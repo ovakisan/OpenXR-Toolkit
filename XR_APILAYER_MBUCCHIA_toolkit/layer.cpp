@@ -3488,6 +3488,13 @@ namespace {
 
         menu::MenuStatistics m_stats{};
         std::ofstream m_logStats;
+        std::ofstream mlogFrames;                    // per-frame CSV file
+        std::vector<FrameRecord> mFrameBuffer;       // filled by render thread
+        std::vector<FrameRecord> mFrameFlushBuffer;  // swapped in for writer thread
+        std::mutex mFrameBufferMutex;
+        std::condition_variable mWriterCV;
+        std::thread mWriterThread;
+        std::atomic<bool> mWriterRunning{false};
         bool m_hasPerformanceCounterKHR{false};
         bool m_hasVisibilityMaskKHR{false};
     };
