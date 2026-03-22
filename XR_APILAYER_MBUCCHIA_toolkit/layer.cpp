@@ -938,26 +938,26 @@ namespace {
             }
 
             // Reserve per-frame buffer and start background writer thread
-            mFrameBuffer.reserve(10000);
-            mFrameFlushBuffer.reserve(10000);
-            mWriterRunning = true;
-            mWriterThread = std::thread([this]() {
-                while (mWriterRunning || !mFrameFlushBuffer.empty()) {
-                    std::unique_lock<std::mutex> lock(mFrameBufferMutex);
-                    mWriterCV.wait_for(lock, std::chrono::seconds(5));
-                    std::swap(mFrameBuffer, mFrameFlushBuffer);
+            m_frameBuffer.reserve(10000);
+            m_frameFlushBuffer.reserve(10000);
+            m_writerRunning = true;
+            m_writerThread = std::thread([this]() {
+                while (m_writerRunning || !m_frameFlushBuffer.empty()) {
+                    std::unique_lock<std::mutex> lock(m_frameBufferMutex);
+                    m_writerCV.wait_for(lock, std::chrono::seconds(5));
+                    std::swap(m_frameBuffer, m_frameFlushBuffer);
                     lock.unlock();
             
-                    if (mlogFrames.is_open()) {
-                        for (const auto& f : mFrameFlushBuffer) {
-                            mlogFrames << f.timestampNs << ","
+                    if (m_logFrames.is_open()) {
+                        for (const auto& f : m_frameFlushBuffer) {
+                            m_logFrames << f.timestampNs << ","
                                        << f.appCpuUs    << ","
                                        << f.renderCpuUs << ","
                                        << f.appGpuUs    << "\n";
                         }
-                        mlogFrames.flush();
+                        m_logFrames.flush();
                     }
-                    mFrameFlushBuffer.clear();
+                    m_frameFlushBuffer.clear();
                 }
             });
 
@@ -2137,7 +2137,9 @@ namespace {
             if (isVrSession(session)) {
                 if (m_graphicsDevice) {
                     m_performanceCounters.appCpuTimer->stop();
-                    m_stats.appCpuTimeUs += m_performanceCounters.appCpuTimer->query();
+                    const uint64_t thisFrameAppCpuUs = m_performanceCounters.appCpuTimer->query();
+                    m_stats.appCpuTimeUs += thisFrameAppCpuUs;
+                    m_performanceCounters.lastFrameAppCpuUs = thisFrameAppCpuUs;
                 }
 
                 // Do throttling if needed.
@@ -2281,8 +2283,9 @@ namespace {
 
                 if (m_graphicsDevice) {
                     m_performanceCounters.renderCpuTimer->start();
-                    m_stats.appGpuTimeUs +=
-                        m_performanceCounters.appGpuTimer[m_performanceCounters.gpuTimerIndex]->query();
+                    const uint64_t thisFrameAppGpuUs = m_performanceCounters.appGpuTimer[m_performanceCounters.gpuTimerIndex]->query();
+                    m_stats.appGpuTimeUs += thisFrameAppGpuUs;
+                    m_performanceCounters.lastFrameAppGpuUs = thisFrameAppGpuUs;
                     m_performanceCounters.appGpuTimer[m_performanceCounters.gpuTimerIndex]->start();
 
                     // With D3D12, we want to make sure the query is enqueued now.
@@ -2359,13 +2362,13 @@ namespace {
 
                     // Write headers.
                     m_logStats << "time,FPS,appCPU (us),renderCPU (us),appGPU (us),VRAM (MB),VRAM (%)\n";
-                    // ADD: open the per-frame file alongside mlogStats
+                    // ADD: open the per-frame file alongside m_logStats
                     std::string frameLogFile = (localAppData / "stats" / std::string(buf)).string() + "_frames.csv";
-                    mlogFrames.open(frameLogFile, std::ios_base::ate);
-                    mlogFrames << "timestamp_ns,appCPU_us,renderCPU_us,appGPU_us\n";
+                    m_logFrames.open(frameLogFile, std::ios_base::ate);
+                    m_logFrames << "timestamp_ns,appCPU_us,renderCPU_us,appGPU_us\n";
                 } else {
                     m_logStats.close();
-                    mlogFrames.close();
+                    m_logFrames.close();
                 }
             }
 
@@ -2606,10 +2609,28 @@ namespace {
             updateStatisticsForFrame();
 
             m_performanceCounters.renderCpuTimer->stop();
-            m_stats.renderCpuTimeUs += m_performanceCounters.renderCpuTimer->query();
+            const uint64_t thisFrameRenderCpuUs = m_performanceCounters.renderCpuTimer->query();
+            m_stats.renderCpuTimeUs += thisFrameRenderCpuUs;
+            if (m_logFrames.is_open()) {
+                std::lock_guard<std::mutex> lock(m_frameBufferMutex);
+                m_frameBuffer.push_back({
+                    std::chrono::steady_clock::now().time_since_epoch().count(),
+                    m_performanceCounters.lastFrameAppCpuUs,
+                    thisFrameRenderCpuUs,
+                    m_performanceCounters.lastFrameAppGpuUs
+                });
+                if (m_frameBuffer.size() >= 9000) {
+                    m_writerCV.notify_one();
+                }
+            }
+
+            
             m_performanceCounters.appGpuTimer[m_performanceCounters.gpuTimerIndex]->stop();
 
             m_stats.endFrameCpuTimeUs += m_performanceCounters.endFrameCpuTimer->query();
+
+
+            
             m_performanceCounters.endFrameCpuTimer->start();
 
             // Toggle to the next set of GPU timers.
@@ -3517,13 +3538,13 @@ namespace {
 
         menu::MenuStatistics m_stats{};
         std::ofstream m_logStats;
-        std::ofstream mlogFrames;                    // per-frame CSV file
-        std::vector<FrameRecord> mFrameBuffer;       // filled by render thread
-        std::vector<FrameRecord> mFrameFlushBuffer;  // swapped in for writer thread
-        std::mutex mFrameBufferMutex;
-        std::condition_variable mWriterCV;
-        std::thread mWriterThread;
-        std::atomic<bool> mWriterRunning{false};
+        std::ofstream m_logFrames;                    // per-frame CSV file
+        std::vector<FrameRecord> m_frameBuffer;       // filled by render thread
+        std::vector<FrameRecord> m_frameFlushBuffer;  // swapped in for writer thread
+        std::mutex m_frameBufferMutex;
+        std::condition_variable m_writerCV;
+        std::thread m_writerThread;
+        std::atomic<bool> m_writerRunning{false};
         bool m_hasPerformanceCounterKHR{false};
         bool m_hasVisibilityMaskKHR{false};
     };
