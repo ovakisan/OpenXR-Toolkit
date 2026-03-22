@@ -3482,6 +3482,8 @@ namespace {
             uint32_t framesInPeriod{0};
             std::chrono::steady_clock::duration timePeriod{0s};
             uint32_t numFrames{0};
+            uint64_t lastFrameAppCpuUs{0};
+            uint64_t lastFrameAppGpuUs{0};
         } m_performanceCounters;
 
         menu::MenuStatistics m_stats{};
