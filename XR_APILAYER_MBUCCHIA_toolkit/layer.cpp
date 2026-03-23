@@ -185,6 +185,7 @@ namespace {
             m_configManager->setDefault(config::SettingPostShadows + "_u1", 0);
 #endif
             // Misc features.
+            m_configManager->setDefault("fov_crop2res", 0); // crop2fov mod
             m_configManager->setDefault(config::SettingICD, 1000);
             m_configManager->setDefault(config::SettingFOVType, 0); // Simple
             m_configManager->setDefault(config::SettingFOV, 100);
@@ -650,6 +651,73 @@ namespace {
                     TLArg(fmt::format("{}x{}", m_displayWidth, m_displayHeight).c_str(), "SystemResolution"));
             }
 
+            // crop2fov mod start
+            if (views != nullptr && viewCapacityInput > 0) {
+                // Log("crop2fov: fov_crop2res=%d fovCaptured=%d viewCount=%u",
+                //     m_configManager->getValue("fov_crop2res"),
+                //     (int)m_originalFovCaptured,
+                //     *viewCountOutput);
+
+                if (m_configManager->getValue("fov_crop2res")) {
+                    for (uint32_t i = 0; i < *viewCountOutput && i < utilities::ViewCount; i++) {
+                        float hScale = 1.0f, vScale = 1.0f;
+
+                        if (m_originalFovCaptured) {
+                            const auto& orig = m_originalFov[i];
+                            const float tanL = fabsf(tanf(orig.angleLeft));
+                            const float tanR =        tanf(orig.angleRight);
+                            const float tanU =        tanf(orig.angleUp);
+                            const float tanD = fabsf(tanf(orig.angleDown));
+
+                            if (m_configManager->getValue(config::SettingFOVType) == 0) {
+                                const float p = m_configManager->getValue(config::SettingFOV) * 0.01f;
+                                hScale = vScale = p;
+                            } else {
+                                const float ll = (i == 0 ? m_configManager->getValue(config::SettingFOVLeftLeft)
+                                                        : m_configManager->getValue(config::SettingFOVRightLeft))  * 0.01f;
+                                const float lr = (i == 0 ? m_configManager->getValue(config::SettingFOVLeftRight)
+                                                        : m_configManager->getValue(config::SettingFOVRightRight)) * 0.01f;
+                                const float up = m_configManager->getValue(config::SettingFOVUp)   * 0.01f;
+                                const float dn = m_configManager->getValue(config::SettingFOVDown) * 0.01f;
+
+                                hScale = (tanL * ll + tanR * lr) / (tanL + tanR);
+                                vScale = (tanU * up + tanD * dn) / (tanU + tanD);
+                            }
+                        } else {
+                            // Tangents not yet captured - linear approximation until first xrLocateViews
+                            if (m_configManager->getValue(config::SettingFOVType) == 0) {
+                                const float p = m_configManager->getValue(config::SettingFOV) * 0.01f;
+                                hScale = vScale = p;
+                            } else {
+                                const float ll = (i == 0 ? m_configManager->getValue(config::SettingFOVLeftLeft)
+                                                        : m_configManager->getValue(config::SettingFOVRightLeft))  * 0.01f;
+                                const float lr = (i == 0 ? m_configManager->getValue(config::SettingFOVLeftRight)
+                                                        : m_configManager->getValue(config::SettingFOVRightRight)) * 0.01f;
+                                const float up = m_configManager->getValue(config::SettingFOVUp)   * 0.01f;
+                                const float dn = m_configManager->getValue(config::SettingFOVDown) * 0.01f;
+
+                                hScale = (ll + lr) * 0.5f;
+                                vScale = (up + dn) * 0.5f;
+                            }
+                        }
+
+                        // Log("crop2fov: eye=%u hScale=%.3f vScale=%.3f -> %ux%u",
+                        //     i, hScale, vScale,
+                        //     (uint32_t)(m_displayWidth  * hScale),
+                        //     (uint32_t)(m_displayHeight * vScale));
+
+                        views[i].recommendedImageRectWidth  = std::max(64u, (uint32_t)(m_displayWidth  * hScale));
+                        views[i].recommendedImageRectHeight = std::max(64u, (uint32_t)(m_displayHeight * vScale));
+                    }
+                    
+                    m_displayWidth  = views[0].recommendedImageRectWidth;
+                    m_displayHeight = views[0].recommendedImageRectHeight;
+                    m_resolutionHeightRatio = float(m_displayHeight) / float(m_displayWidth);
+                    m_maxDisplayHeight = std::min(m_maxDisplayHeight, uint32_t(views[0].maxImageRectWidth * m_resolutionHeightRatio));
+                }
+            }
+            // crop2fov mod end
+
             return result;
         }
 
@@ -1052,6 +1120,9 @@ namespace {
                     m_graphicsDevice->shutdown();
                 }
                 m_graphicsDevice.reset();
+
+                // crop2fov mod
+                m_originalFovCaptured = false;
 
                 // We intentionally do not reset hand/eye trackers since they are tied to the instance, not session.
 
@@ -1750,6 +1821,12 @@ namespace {
                 viewLocateInfo->viewConfigurationType == XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO &&
                 viewCapacityInput) {
                 assert(*viewCountOutput == utilities::ViewCount);
+                if (!m_originalFovCaptured) {
+                    for (uint32_t i = 0; i < *viewCountOutput; i++) {
+                        m_originalFov[i] = views[i].fov; // crop2fov mod
+                    }
+                    m_originalFovCaptured = true; // crop2fov mod
+                }
                 using namespace DirectX;
 
                 m_posesForFrame[0].pose = views[0].pose;
@@ -3472,6 +3549,10 @@ namespace {
         bool m_isOmniceptDetected{false};
         bool m_hasPimaxEyeTracker{false};
         bool m_isFrameThrottlingPossible{true};
+        XrFovf m_originalFov[2] = {};           // crop2fov mod
+        bool m_originalFovCaptured = false;     // crop2fov mod
+        uint32_t m_originalViewWidth[2] = {};   // crop2fov mod
+        uint32_t m_originalViewHeight[2] = {};  // crop2fov mod
         bool m_overrideParallelProjection{false};
 
         std::mutex m_frameLock;

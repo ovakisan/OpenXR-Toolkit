@@ -1827,6 +1827,16 @@ namespace {
                  [&](int value) { return fmt::format("{}% ({:.1f}\xB0)", value, m_stats.fov[1].angleRight); }});
             fovAdvancedGroup.finalize();
 
+
+            m_menuEntries.push_back(
+                {MenuIndent::OptionIndent,
+                 "Crop Res to FOV",
+                 MenuEntryType::Choice,
+                 "fov_crop2res",
+                 0,
+                 MenuEntry::LastVal<NoYesType>(),
+                 MenuEntry::FmtEnum<NoYesType>}); // crop2fov mod
+
             m_menuEntries.push_back(
                 {MenuIndent::OptionIndent, "Zoom", MenuEntryType::Slider, SettingZoom, 10, 1500, [](int value) {
                      return fmt::format("{:.1f}x", value / 10.f);
