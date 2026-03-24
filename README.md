@@ -7,12 +7,13 @@
 
 To make sense of results use analyze_frames.py python script or create your own.
 
-<img width="1366" height="1209" alt="image" src="https://github.com/user-attachments/assets/303bd611-3ca5-47d0-bd15-afeabe5e839c" />
+<img width="2785" height="2000" alt="newplot(2)" src="https://github.com/user-attachments/assets/168bab09-478c-42e1-b319-598cb3c64f57" />
 
 
 
 _____________________________________________________________________________________________________
 # OpenXR Toolkit
+
 
 This software provides a collection of useful features to customize and improve existing OpenXR applications,
 including render upscaling and sharpening, foveated rendering, hand tracking to controller input simulation,
