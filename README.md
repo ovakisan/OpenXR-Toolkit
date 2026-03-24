@@ -7,11 +7,12 @@
 
 To make sense of results use analyze_frames.py python script or create your own.
 
-<img width="2785" height="2000" alt="newplot(2)" src="https://github.com/user-attachments/assets/168bab09-478c-42e1-b319-598cb3c64f57" />
+<img width="2283" height="2000" alt="newplot(3)" src="https://github.com/user-attachments/assets/018e698d-783b-4d5f-a9c2-fd72ebdc7247" />
 
 
 
 _____________________________________________________________________________________________________
+
 # OpenXR Toolkit
 
 
