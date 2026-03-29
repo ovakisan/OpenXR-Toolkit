@@ -94,6 +94,7 @@ copy $(ProjectDir)\FSR.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\CAS.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\VRS.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\postprocess.hlsl $(OutDir)\shaders
+copy $(ProjectDir)\helmet.hlsl $(OutDir)\shaders
 copy $(SolutionDir)\external\Omnicept-SDK\bin\$(Configuration)\jsoncpp.dll $(OutDir)
 copy $(SolutionDir)\external\Omnicept-SDK\bin\$(Configuration)\libzmq-mt-gd-4_3_3.dll $(OutDir)
 copy $(SolutionDir)\external\aSeeVRClient\bin\aSeeVRClient.dll $(OutDir)
@@ -174,6 +175,7 @@ copy $(ProjectDir)\FSR.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\CAS.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\VRS.hlsl $(OutDir)\shaders
 copy $(ProjectDir)\postprocess.hlsl $(OutDir)\shaders
+copy $(ProjectDir)\helmet.hlsl $(OutDir)\shaders
 copy $(SolutionDir)\external\Omnicept-SDK\bin\$(Configuration)\jsoncpp.dll $(OutDir)
 copy $(SolutionDir)\external\Omnicept-SDK\bin\$(Configuration)\libzmq-mt-4_3_3.dll $(OutDir)
 copy $(SolutionDir)\external\aSeeVRClient\bin\aSeeVRClient.dll $(OutDir)
@@ -260,6 +262,7 @@ $(SolutionDir)\patches\sed.exe -i "s/VALUE \"ProductVersion\", \".*\"$/VALUE \"P
     <ClCompile Include="framework\entry.cpp" />
     <ClCompile Include="fsr.cpp" />
     <ClCompile Include="hand2controller.cpp" />
+    <ClCompile Include="helmet.cpp" />
     <ClCompile Include="layer.cpp" />
     <ClCompile Include="log.cpp" />
     <ClCompile Include="menu.cpp" />
@@ -329,6 +332,12 @@ $(SolutionDir)\patches\sed.exe -i "s/VALUE \"ProductVersion\", \".*\"$/VALUE \"P
       </DeploymentContent>
     </FxCompile>
     <FxCompile Include="VRS.hlsl">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </FxCompile>
+    <FxCompile Include="helmet.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </FxCompile>

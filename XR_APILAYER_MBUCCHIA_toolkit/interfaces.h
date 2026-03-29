@@ -141,6 +141,13 @@ namespace toolkit {
         const std::string SettingFOVLeftRight = "fov_lr";
         const std::string SettingFOVRightLeft = "fov_rl";
         const std::string SettingFOVRightRight = "fov_rr";
+        const std::string SettingFOVCrop2Res = "fov_crop2res";
+        const std::string SettingHelmetView = "helmet_view";
+        const std::string SettingHelmetVisorTop = "helmet_visor_top";
+        const std::string SettingHelmetVisorBottom = "helmet_visor_bot";
+        const std::string SettingHelmetVisorLeft = "helmet_visor_left";
+        const std::string SettingHelmetVisorRight = "helmet_visor_right";
+        const std::string SettingHelmetBrightness = "helmet_brightness";
         const std::string SettingZoom = "zoom";
         const std::string SettingDisableHAM = "disable_ham";
         const std::string SettingBlindEye = "blind_eye";
@@ -577,7 +584,8 @@ namespace toolkit {
                                                                   const std::string& entryPoint,
                                                                   std::string_view debugName,
                                                                   const D3D_SHADER_MACRO* defines = nullptr,
-                                                                  std::filesystem::path includePath = "") = 0;
+                                                                  std::filesystem::path includePath = "",
+                                                                  bool alphaBlend = false) = 0;
 
             virtual std::shared_ptr<IComputeShader> createComputeShader(const std::filesystem::path& shaderFile,
                                                                         const std::string& entryPoint,

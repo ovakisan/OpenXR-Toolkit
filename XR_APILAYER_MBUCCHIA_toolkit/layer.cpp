@@ -29,6 +29,7 @@
 #include "interfaces.h"
 #include "layer.h"
 #include "log.h"
+#include "helmet.h"
 
 namespace {
 
@@ -185,7 +186,13 @@ namespace {
             m_configManager->setDefault(config::SettingPostShadows + "_u1", 0);
 #endif
             // Misc features.
-            m_configManager->setDefault("fov_crop2res", 0); // crop2fov mod
+            m_configManager->setDefault(config::SettingFOVCrop2Res, 0);
+            m_configManager->setDefault(config::SettingHelmetView, 0);
+            m_configManager->setDefault(config::SettingHelmetVisorTop, 25);
+            m_configManager->setDefault(config::SettingHelmetVisorBottom, 75);
+            m_configManager->setDefault(config::SettingHelmetVisorLeft, 0);
+            m_configManager->setDefault(config::SettingHelmetVisorRight, 100);
+            m_configManager->setDefault(config::SettingHelmetBrightness, 100);
             m_configManager->setDefault(config::SettingICD, 1000);
             m_configManager->setDefault(config::SettingFOVType, 0); // Simple
             m_configManager->setDefault(config::SettingFOV, 100);
@@ -629,8 +636,7 @@ namespace {
                     views[i].recommendedImageRectHeight = inputHeight;
                 }
 
-                static bool atLeastOnce = false;
-                if (m_vrSession == XR_NULL_HANDLE || !atLeastOnce) {
+                if (m_vrSession == XR_NULL_HANDLE || !m_resolutionLogged) {
                     if (inputWidth != m_displayWidth || inputHeight != m_displayHeight) {
                         Log("Upscaling from %ux%u to %ux%u (%u%%)\n",
                             inputWidth,
@@ -641,7 +647,7 @@ namespace {
                     } else {
                         Log("Using OpenXR resolution (no upscaling): %ux%u\n", m_displayWidth, m_displayHeight);
                     }
-                    atLeastOnce = true;
+                    m_resolutionLogged = true;
                 }
 
                 TraceLoggingWrite(
@@ -651,72 +657,78 @@ namespace {
                     TLArg(fmt::format("{}x{}", m_displayWidth, m_displayHeight).c_str(), "SystemResolution"));
             }
 
-            // crop2fov mod start
-            if (views != nullptr && viewCapacityInput > 0) {
-                // Log("crop2fov: fov_crop2res=%d fovCaptured=%d viewCount=%u",
-                //     m_configManager->getValue("fov_crop2res"),
-                //     (int)m_originalFovCaptured,
-                //     *viewCountOutput);
+            // Crop resolution to match reduced FOV when enabled.
+            if (views != nullptr && viewCapacityInput > 0 &&
+                m_configManager->getValue(config::SettingFOVCrop2Res)) {
 
-                if (m_configManager->getValue("fov_crop2res")) {
-                    for (uint32_t i = 0; i < *viewCountOutput && i < utilities::ViewCount; i++) {
-                        float hScale = 1.0f, vScale = 1.0f;
-
-                        if (m_originalFovCaptured) {
-                            const auto& orig = m_originalFov[i];
-                            const float tanL = fabsf(tanf(orig.angleLeft));
-                            const float tanR =        tanf(orig.angleRight);
-                            const float tanU =        tanf(orig.angleUp);
-                            const float tanD = fabsf(tanf(orig.angleDown));
-
-                            if (m_configManager->getValue(config::SettingFOVType) == 0) {
-                                const float p = m_configManager->getValue(config::SettingFOV) * 0.01f;
-                                hScale = vScale = p;
-                            } else {
-                                const float ll = (i == 0 ? m_configManager->getValue(config::SettingFOVLeftLeft)
-                                                        : m_configManager->getValue(config::SettingFOVRightLeft))  * 0.01f;
-                                const float lr = (i == 0 ? m_configManager->getValue(config::SettingFOVLeftRight)
-                                                        : m_configManager->getValue(config::SettingFOVRightRight)) * 0.01f;
-                                const float up = m_configManager->getValue(config::SettingFOVUp)   * 0.01f;
-                                const float dn = m_configManager->getValue(config::SettingFOVDown) * 0.01f;
-
-                                hScale = (tanL * ll + tanR * lr) / (tanL + tanR);
-                                vScale = (tanU * up + tanD * dn) / (tanU + tanD);
-                            }
-                        } else {
-                            // Tangents not yet captured - linear approximation until first xrLocateViews
-                            if (m_configManager->getValue(config::SettingFOVType) == 0) {
-                                const float p = m_configManager->getValue(config::SettingFOV) * 0.01f;
-                                hScale = vScale = p;
-                            } else {
-                                const float ll = (i == 0 ? m_configManager->getValue(config::SettingFOVLeftLeft)
-                                                        : m_configManager->getValue(config::SettingFOVRightLeft))  * 0.01f;
-                                const float lr = (i == 0 ? m_configManager->getValue(config::SettingFOVLeftRight)
-                                                        : m_configManager->getValue(config::SettingFOVRightRight)) * 0.01f;
-                                const float up = m_configManager->getValue(config::SettingFOVUp)   * 0.01f;
-                                const float dn = m_configManager->getValue(config::SettingFOVDown) * 0.01f;
-
-                                hScale = (ll + lr) * 0.5f;
-                                vScale = (up + dn) * 0.5f;
-                            }
-                        }
-
-                        // Log("crop2fov: eye=%u hScale=%.3f vScale=%.3f -> %ux%u",
-                        //     i, hScale, vScale,
-                        //     (uint32_t)(m_displayWidth  * hScale),
-                        //     (uint32_t)(m_displayHeight * vScale));
-
-                        views[i].recommendedImageRectWidth  = std::max(64u, (uint32_t)(m_displayWidth  * hScale));
-                        views[i].recommendedImageRectHeight = std::max(64u, (uint32_t)(m_displayHeight * vScale));
-                    }
-                    
-                    m_displayWidth  = views[0].recommendedImageRectWidth;
-                    m_displayHeight = views[0].recommendedImageRectHeight;
-                    m_resolutionHeightRatio = float(m_displayHeight) / float(m_displayWidth);
-                    m_maxDisplayHeight = std::min(m_maxDisplayHeight, uint32_t(views[0].maxImageRectWidth * m_resolutionHeightRatio));
+                // Save the pre-crop display dimensions once (survives repeated polls).
+                // This is the base we always compute the crop from — native or overridden.
+                if (m_preCropDisplayWidth == 0) {
+                    m_preCropDisplayWidth  = m_displayWidth;
+                    m_preCropDisplayHeight = m_displayHeight;
                 }
+
+                // Save original (full) view dimensions before reducing them so the runtime
+                // swapchain can be created at full resolution for the helmet overlay.
+                for (uint32_t i = 0; i < *viewCountOutput && i < utilities::ViewCount; i++) {
+                    m_originalViewWidth[i]  = views[i].recommendedImageRectWidth;
+                    m_originalViewHeight[i] = views[i].recommendedImageRectHeight;
+                }
+
+                for (uint32_t i = 0; i < *viewCountOutput && i < utilities::ViewCount; i++) {
+                    float hScale = 1.0f, vScale = 1.0f;
+
+                    if (m_originalFovCaptured) {
+                        const auto& orig = m_originalFov[i];
+                        const float tanL = fabsf(tanf(orig.angleLeft));
+                        const float tanR =        tanf(orig.angleRight);
+                        const float tanU =        tanf(orig.angleUp);
+                        const float tanD = fabsf(tanf(orig.angleDown));
+
+                        if (m_configManager->getValue(config::SettingFOVType) == 0) {
+                            const float p = m_configManager->getValue(config::SettingFOV) * 0.01f;
+                            hScale = vScale = p;
+                        } else {
+                            const float ll = (i == 0 ? m_configManager->getValue(config::SettingFOVLeftLeft)
+                                                    : m_configManager->getValue(config::SettingFOVRightLeft))  * 0.01f;
+                            const float lr = (i == 0 ? m_configManager->getValue(config::SettingFOVLeftRight)
+                                                    : m_configManager->getValue(config::SettingFOVRightRight)) * 0.01f;
+                            const float up = m_configManager->getValue(config::SettingFOVUp)   * 0.01f;
+                            const float dn = m_configManager->getValue(config::SettingFOVDown) * 0.01f;
+
+                            hScale = (tanL * ll + tanR * lr) / (tanL + tanR);
+                            vScale = (tanU * up + tanD * dn) / (tanU + tanD);
+                        }
+                    } else {
+                        // Tangents not yet captured — linear approximation until first xrLocateViews.
+                        if (m_configManager->getValue(config::SettingFOVType) == 0) {
+                            const float p = m_configManager->getValue(config::SettingFOV) * 0.01f;
+                            hScale = vScale = p;
+                        } else {
+                            const float ll = (i == 0 ? m_configManager->getValue(config::SettingFOVLeftLeft)
+                                                    : m_configManager->getValue(config::SettingFOVRightLeft))  * 0.01f;
+                            const float lr = (i == 0 ? m_configManager->getValue(config::SettingFOVLeftRight)
+                                                    : m_configManager->getValue(config::SettingFOVRightRight)) * 0.01f;
+                            const float up = m_configManager->getValue(config::SettingFOVUp)   * 0.01f;
+                            const float dn = m_configManager->getValue(config::SettingFOVDown) * 0.01f;
+
+                            hScale = (ll + lr) * 0.5f;
+                            vScale = (up + dn) * 0.5f;
+                        }
+                    }
+
+                    // Always crop from the stable pre-crop base to avoid double-crop
+                    // when apps repeatedly poll xrEnumerateViewConfigurationViews.
+                    views[i].recommendedImageRectWidth  = std::max(64u, (uint32_t)(m_preCropDisplayWidth  * hScale));
+                    views[i].recommendedImageRectHeight = std::max(64u, (uint32_t)(m_preCropDisplayHeight * vScale));
+                }
+
+                // Update m_displayWidth/Height for downstream subsystems.
+                // Do NOT update m_resolutionHeightRatio or m_maxDisplayHeight — those must
+                // retain the original aspect ratio for the Override Resolution slider.
+                m_displayWidth  = views[0].recommendedImageRectWidth;
+                m_displayHeight = views[0].recommendedImageRectHeight;
             }
-            // crop2fov mod end
 
             return result;
         }
@@ -825,6 +837,7 @@ namespace {
                     }
 
                     m_postProcessor = graphics::CreateImageProcessor(m_configManager, m_graphicsDevice);
+                    m_helmetOverlay = std::make_shared<graphics::HelmetOverlay>(m_configManager, m_graphicsDevice);
 
                     if (m_graphicsDevice->isEventsSupported()) {
                         if (!m_configManager->getValue("disable_frame_analyzer")) {
@@ -1102,6 +1115,7 @@ namespace {
                 // Cleanup our resources.
                 m_upscaler.reset();
                 m_postProcessor.reset();
+                m_helmetOverlay.reset();
                 m_frameAnalyzer.reset();
                 m_variableRateShader.reset();
                 for (unsigned int i = 0; i <= GpuTimerLatency; i++) {
@@ -1121,8 +1135,18 @@ namespace {
                 }
                 m_graphicsDevice.reset();
 
-                // crop2fov mod
+                // Reset crop2fov / helmet state for the next session.
                 m_originalFovCaptured = false;
+                m_resolutionLogged = false;
+                m_helmetLoggedOnce = false;
+                m_helmetLoggedFov = false;
+                m_preCropDisplayWidth = 0;
+                m_preCropDisplayHeight = 0;
+                // NOTE: Do NOT clear m_originalViewWidth/Height here.
+                // Some apps cache the dimensions from xrGetViewConfigurationViews and
+                // don't re-query on session restart.  The original (full) resolution is
+                // still valid and is needed by xrCreateSwapchain to upsize the runtime
+                // swapchain for the helmet overlay.
 
                 // We intentionally do not reset hand/eye trackers since they are tied to the instance, not session.
 
@@ -1185,7 +1209,20 @@ namespace {
             if (!isDepth) {
                 // Modify the swapchain to handle our processing chain (eg: change resolution and/or usage.
 
-                if (m_upscaleMode == config::ScalingType::NIS || 
+                // When FOV crop is enabled, create the runtime swapchain at the original (full)
+                // resolution so the helmet shader has actual bar-region pixels to fill.
+                if (m_configManager->getValue(config::SettingFOVCrop2Res) &&
+                    m_originalViewWidth[0] > 0 &&
+                    createInfo->width == m_displayWidth &&
+                    createInfo->height == m_displayHeight) {
+                    chainCreateInfo.width  = m_originalViewWidth[0];
+                    chainCreateInfo.height = m_originalViewHeight[0];
+                    Log("Helmet: runtime swapchain %ux%u -> %ux%u (full res)\n",
+                        createInfo->width, createInfo->height,
+                        chainCreateInfo.width, chainCreateInfo.height);
+                }
+
+                if (m_upscaleMode == config::ScalingType::NIS ||
                     m_upscaleMode == config::ScalingType::FSR ||
                     m_upscaleMode == config::ScalingType::CAS
                 ) {
@@ -1823,9 +1860,9 @@ namespace {
                 assert(*viewCountOutput == utilities::ViewCount);
                 if (!m_originalFovCaptured) {
                     for (uint32_t i = 0; i < *viewCountOutput; i++) {
-                        m_originalFov[i] = views[i].fov; // crop2fov mod
+                        m_originalFov[i] = views[i].fov;
                     }
-                    m_originalFovCaptured = true; // crop2fov mod
+                    m_originalFovCaptured = true;
                 }
                 using namespace DirectX;
 
@@ -1906,11 +1943,21 @@ namespace {
                 }
 
                 // Override the FOV if requested.
+                // Use tangent-based scaling: atan(tan(angle)*scale) so that the reduced FOV's
+                // tangent range matches the tangent-based resolution reduction in xrGetViewConfigurationViews,
+                // preventing stretching when the full-res runtime swapchain is used for helmet bars.
+                auto scaleFovTan = [](XrFovf& fov, float sl, float sr, float su, float sd) {
+                    fov.angleLeft  = atanf(tanf(fov.angleLeft)  * sl);
+                    fov.angleRight = atanf(tanf(fov.angleRight) * sr);
+                    fov.angleUp    = atanf(tanf(fov.angleUp)    * su);
+                    fov.angleDown  = atanf(tanf(fov.angleDown)  * sd);
+                };
                 if (m_configManager->getValue(config::SettingFOVType) == 0) {
                     const auto fovOverride = m_configManager->getValue(config::SettingFOV);
                     if (fovOverride != 100) {
-                        StoreXrFov(&views[0].fov, LoadXrFov(views[0].fov) * XMVectorReplicate(fovOverride * 0.01f));
-                        StoreXrFov(&views[1].fov, LoadXrFov(views[1].fov) * XMVectorReplicate(fovOverride * 0.01f));
+                        const float p = fovOverride * 0.01f;
+                        scaleFovTan(views[0].fov, p, p, p, p);
+                        scaleFovTan(views[1].fov, p, p, p, p);
                     }
                 } else {
                     // XrFovF layout is: L,R,U,D
@@ -1924,8 +1971,8 @@ namespace {
                                              fov1.z,
                                              fov1.w);
 
-                    StoreXrFov(&views[0].fov, LoadXrFov(views[0].fov) * XMLoadSInt4(&fov1) * XMVectorReplicate(0.01f));
-                    StoreXrFov(&views[1].fov, LoadXrFov(views[1].fov) * XMLoadSInt4(&fov2) * XMVectorReplicate(0.01f));
+                    scaleFovTan(views[0].fov, fov1.x*0.01f, fov1.y*0.01f, fov1.z*0.01f, fov1.w*0.01f);
+                    scaleFovTan(views[1].fov, fov2.x*0.01f, fov2.y*0.01f, fov1.z*0.01f, fov1.w*0.01f);
                 }
 
                 StoreXrFov(&m_stats.fov[0], ConvertToDegrees(views[0].fov));
@@ -2601,6 +2648,9 @@ namespace {
             }
             if (reloadShaders) {
                 m_postProcessor->reload();
+                if (m_helmetOverlay) {
+                    m_helmetOverlay->reload();
+                }
             }
             m_postProcessor->update();
 
@@ -2895,6 +2945,8 @@ namespace {
                             view.subImage.imageRect.offset.y ||
                             view.subImage.imageRect.extent.width != swapchainImages.appTexture->getInfo().width ||
                             view.subImage.imageRect.extent.height != swapchainImages.appTexture->getInfo().height ||
+                            swapchainImages.runtimeTexture->getInfo().width  != swapchainImages.appTexture->getInfo().width ||
+                            swapchainImages.runtimeTexture->getInfo().height != swapchainImages.appTexture->getInfo().height ||
                             m_configManager->getValue("force_vprt_path");
 
                         std::shared_ptr<graphics::ITexture> nextInput = swapchainImages.appTexture;
@@ -3050,17 +3102,158 @@ namespace {
                             timer->stop();
                         }
 
-                        // Copy the output back into the VPRT runtime swapchain is needed.
+                        // Determine whether helmet view should be active this frame.
+                        // The size check ensures there are actual bars to fill — if the runtime
+                        // swapchain was never upsized (mid-session toggle, session-restart race,
+                        // etc.) the helmet code would clear the game to black.
+                        const bool helmetActive =
+                            m_helmetOverlay && m_helmetOverlay->isTextureLoaded() &&
+                            m_configManager->getValue(config::SettingHelmetView) &&
+                            m_configManager->getValue(config::SettingFOVCrop2Res) &&
+                            m_originalFovCaptured &&
+                            (swapchainImages.runtimeTexture->getInfo().width !=
+                                 swapchainImages.appTexture->getInfo().width ||
+                             swapchainImages.runtimeTexture->getInfo().height !=
+                                 swapchainImages.appTexture->getInfo().height);
+
+                        // Compute the position of game content in runtimeTexture.
+                        uint32_t gameOffsetX = correctedProjectionViews[eye].subImage.imageRect.offset.x;
+                        uint32_t gameOffsetY = correctedProjectionViews[eye].subImage.imageRect.offset.y;
+
+                        if (helmetActive) {
+                            // Center the game content in the full-res runtimeTexture so its
+                            // pixel positions match the correct FOV sub-range.
+                            const auto& origFov = m_originalFov[eye];
+                            const float tanL = fabsf(tanf(origFov.angleLeft));
+                            const float tanR = tanf(origFov.angleRight);
+                            const float tanU = tanf(origFov.angleUp);
+                            const float tanD = fabsf(tanf(origFov.angleDown));
+
+                            float upScale, downScale, leftScale, rightScale;
+                            if (m_configManager->getValue(config::SettingFOVType) == 0) {
+                                upScale = downScale = leftScale = rightScale =
+                                    m_configManager->getValue(config::SettingFOV) * 0.01f;
+                            } else {
+                                upScale    = m_configManager->getValue(config::SettingFOVUp) * 0.01f;
+                                downScale  = m_configManager->getValue(config::SettingFOVDown) * 0.01f;
+                                const auto& leftKey =
+                                    (eye == 0) ? config::SettingFOVLeftLeft : config::SettingFOVRightLeft;
+                                const auto& rightKey =
+                                    (eye == 0) ? config::SettingFOVLeftRight : config::SettingFOVRightRight;
+                                leftScale  = m_configManager->getValue(leftKey) * 0.01f;
+                                rightScale = m_configManager->getValue(rightKey) * 0.01f;
+                            }
+
+                            const float fullW = (float)swapchainImages.runtimeTexture->getInfo().width;
+                            const float fullH = (float)swapchainImages.runtimeTexture->getInfo().height;
+
+                            // Place game content so the cropped FOV tangent range aligns with
+                            // the correct pixel region of the full-res texture.
+                            // y=0 is TOP of texture, mapping to +tanU.  The game's top edge
+                            // is at tanU*upScale, so:
+                            //   tanU*upScale = tanU - (tanU+tanD)*gameOffsetY/fullH
+                            //   gameOffsetY  = fullH * tanU*(1-upScale) / (tanU+tanD)
+                            // Similarly x=0 is LEFT, mapping to -tanL.
+                            gameOffsetX = (uint32_t)(tanL * (1.f - leftScale) / (tanL + tanR) * fullW);
+                            gameOffsetY = (uint32_t)(tanU * (1.f - upScale) / (tanU + tanD) * fullH);
+
+                            // Clear the runtime texture to black so stale swapchain data doesn't
+                            // bleed through transparent helmet regions.
+                            int32_t rtSlice = view.subImage.imageArrayIndex;
+                            m_graphicsDevice->setRenderTargets(
+                                1, &swapchainImages.runtimeTexture, &rtSlice);
+                            m_graphicsDevice->clearColor(
+                                0, 0,
+                                (float)swapchainImages.runtimeTexture->getInfo().height,
+                                (float)swapchainImages.runtimeTexture->getInfo().width,
+                                {0.f, 0.f, 0.f, 1.f});
+                            m_graphicsDevice->unsetRenderTargets();
+                        }
+
+                        // Copy the output back into the VPRT runtime swapchain as needed.
                         if (finalOutput != swapchainImages.runtimeTexture) {
                             finalOutput->copyTo(swapchainImages.runtimeTexture,
-                                                correctedProjectionViews[eye].subImage.imageRect.offset.x,
-                                                correctedProjectionViews[eye].subImage.imageRect.offset.y,
+                                                gameOffsetX,
+                                                gameOffsetY,
                                                 view.subImage.imageArrayIndex);
                         }
 
-                        // Patch the resolution.
-                        correctedProjectionViews[eye].subImage.imageRect.extent.width = scaledOutputWidth;
-                        correctedProjectionViews[eye].subImage.imageRect.extent.height = scaledOutputHeight;
+                        // Helmet overlay: blend the helmet PNG into the bar regions.
+                        if (helmetActive) {
+                            const float fullW = (float)swapchainImages.runtimeTexture->getInfo().width;
+                            const float fullH = (float)swapchainImages.runtimeTexture->getInfo().height;
+                            const float gameLeft   = std::min((float)gameOffsetX / fullW, 1.f);
+                            const float gameTop    = std::min((float)gameOffsetY / fullH, 1.f);
+                            const float gameRight  = std::min((float)(gameOffsetX + scaledOutputWidth) / fullW, 1.f);
+                            const float gameBottom = std::min((float)(gameOffsetY + scaledOutputHeight) / fullH, 1.f);
+
+                            const XrVector4f gameRect = {gameLeft, gameTop, gameRight, gameBottom};
+
+                            // VisorRect: where the transparent visor opening is in the PNG (0..1).
+                            // The shader maps: top bar -> PNG[0, visorTop],
+                            //                  game   -> PNG[visorTop, visorBottom],
+                            //                  bot bar-> PNG[visorBottom, 1].
+                            const float visorTop  = m_configManager->getValue(config::SettingHelmetVisorTop) * 0.01f;
+                            const float visorBot  = m_configManager->getValue(config::SettingHelmetVisorBottom) * 0.01f;
+                            float visorLeft       = m_configManager->getValue(config::SettingHelmetVisorLeft) * 0.01f;
+                            float visorRight      = m_configManager->getValue(config::SettingHelmetVisorRight) * 0.01f;
+
+                            // Safety: ensure visor boundaries are sane (protects against
+                            // uninitialized settings or user-edited config with crossed values).
+                            if (visorRight <= visorLeft) {
+                                visorLeft  = 0.f;
+                                visorRight = 1.f;
+                            }
+                            float safeVisorTop = visorTop;
+                            float safeVisorBot = visorBot;
+                            if (safeVisorBot <= safeVisorTop) {
+                                safeVisorTop = 0.25f;
+                                safeVisorBot = 0.75f;
+                            }
+                            const XrVector4f visorRect = {visorLeft, safeVisorTop, visorRight, safeVisorBot};
+
+                            const float helmetBrightness =
+                                m_configManager->getValue(config::SettingHelmetBrightness) * 0.01f;
+                            m_helmetOverlay->process(swapchainImages.runtimeTexture, gameRect, visorRect,
+                                                     helmetBrightness);
+
+                            // Diagnostic: log once per eye=0 to verify values.
+                            if (eye == 0 && !m_helmetLoggedOnce) {
+                                Log("Helmet: app=%ux%u rt=%ux%u offset=(%u,%u) "
+                                    "gameRect=(%.3f,%.3f,%.3f,%.3f) "
+                                    "visor=(L=%.0f%% T=%.0f%% R=%.0f%% B=%.0f%%) brightness=%.0f%%\n",
+                                    swapchainImages.appTexture->getInfo().width,
+                                    swapchainImages.appTexture->getInfo().height,
+                                    swapchainImages.runtimeTexture->getInfo().width,
+                                    swapchainImages.runtimeTexture->getInfo().height,
+                                    gameOffsetX, gameOffsetY,
+                                    gameLeft, gameTop, gameRight, gameBottom,
+                                    visorLeft * 100, visorTop * 100,
+                                    visorRight * 100, visorBot * 100,
+                                    helmetBrightness * 100);
+                                const auto& fov = m_originalFov[0];
+                                Log("Helmet: originalFov L=%.4f R=%.4f U=%.4f D=%.4f\n",
+                                    fov.angleLeft, fov.angleRight, fov.angleUp, fov.angleDown);
+                                const auto& rfov = m_posesForFrame[0].fov;
+                                Log("Helmet: reducedFov  L=%.4f R=%.4f U=%.4f D=%.4f\n",
+                                    rfov.angleLeft, rfov.angleRight, rfov.angleUp, rfov.angleDown);
+                                m_helmetLoggedOnce = true;
+                            }
+                        }
+
+                        // Patch the resolution and FOV for the runtime submission.
+                        if (helmetActive) {
+                            // Expand subImage to the full runtime texture.
+                            correctedProjectionViews[eye].subImage.imageRect.offset.x = 0;
+                            correctedProjectionViews[eye].subImage.imageRect.offset.y = 0;
+                            correctedProjectionViews[eye].subImage.imageRect.extent.width =
+                                swapchainImages.runtimeTexture->getInfo().width;
+                            correctedProjectionViews[eye].subImage.imageRect.extent.height =
+                                swapchainImages.runtimeTexture->getInfo().height;
+                        } else {
+                            correctedProjectionViews[eye].subImage.imageRect.extent.width = scaledOutputWidth;
+                            correctedProjectionViews[eye].subImage.imageRect.extent.height = scaledOutputHeight;
+                        }
 
                         textureForOverlay[eye] = swapchainImages.runtimeTexture;
                         sliceForOverlay[eye] = view.subImage.imageArrayIndex;
@@ -3086,6 +3279,31 @@ namespace {
                             if (yflip) {
                                 std::swap(correctedProjectionViews[eye].fov.angleDown,
                                           correctedProjectionViews[eye].fov.angleUp);
+                            }
+                        }
+
+                        // When helmet is active, submit the full original FOV so the runtime
+                        // maps the full-res texture (game + helmet bars) to the full display.
+                        if (helmetActive) {
+                            const bool yflip = correctedProjectionViews[eye].fov.angleDown > 0 &&
+                                               correctedProjectionViews[eye].fov.angleUp < 0;
+                            correctedProjectionViews[eye].fov = m_originalFov[eye];
+                            if (yflip) {
+                                std::swap(correctedProjectionViews[eye].fov.angleDown,
+                                          correctedProjectionViews[eye].fov.angleUp);
+                            }
+
+                            if (eye == 0 && m_helmetLoggedOnce && !m_helmetLoggedFov) {
+                                Log("Helmet: submitting subImage=(%d,%d %ux%u) fov=(%.4f,%.4f,%.4f,%.4f)\n",
+                                    correctedProjectionViews[0].subImage.imageRect.offset.x,
+                                    correctedProjectionViews[0].subImage.imageRect.offset.y,
+                                    correctedProjectionViews[0].subImage.imageRect.extent.width,
+                                    correctedProjectionViews[0].subImage.imageRect.extent.height,
+                                    correctedProjectionViews[0].fov.angleLeft,
+                                    correctedProjectionViews[0].fov.angleRight,
+                                    correctedProjectionViews[0].fov.angleUp,
+                                    correctedProjectionViews[0].fov.angleDown);
+                                m_helmetLoggedFov = true;
                             }
                         }
 
@@ -3549,10 +3767,15 @@ namespace {
         bool m_isOmniceptDetected{false};
         bool m_hasPimaxEyeTracker{false};
         bool m_isFrameThrottlingPossible{true};
-        XrFovf m_originalFov[2] = {};           // crop2fov mod
-        bool m_originalFovCaptured = false;     // crop2fov mod
-        uint32_t m_originalViewWidth[2] = {};   // crop2fov mod
-        uint32_t m_originalViewHeight[2] = {};  // crop2fov mod
+        XrFovf m_originalFov[utilities::ViewCount] = {};
+        bool m_originalFovCaptured{false};
+        uint32_t m_originalViewWidth[utilities::ViewCount] = {};
+        uint32_t m_originalViewHeight[utilities::ViewCount] = {};
+        uint32_t m_preCropDisplayWidth{0};
+        uint32_t m_preCropDisplayHeight{0};
+        bool m_resolutionLogged{false};
+        bool m_helmetLoggedOnce{false};
+        bool m_helmetLoggedFov{false};
         bool m_overrideParallelProjection{false};
 
         std::mutex m_frameLock;
@@ -3597,6 +3820,7 @@ namespace {
 
         std::shared_ptr<graphics::IImageProcessor> m_upscaler;
         std::shared_ptr<graphics::IImageProcessor> m_postProcessor;
+        std::shared_ptr<graphics::HelmetOverlay> m_helmetOverlay;
         std::shared_ptr<graphics::IVariableRateShader> m_variableRateShader;
 
         std::vector<int> m_keyModifiers;

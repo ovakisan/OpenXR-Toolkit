@@ -1339,7 +1339,8 @@ namespace {
                                                       const std::string& entryPoint,
                                                       std::string_view debugName,
                                                       const D3D_SHADER_MACRO* defines,
-                                                      std::filesystem::path includePath = "") override {
+                                                      std::filesystem::path includePath = "",
+                                                      bool alphaBlend = false) override {
             ComPtr<ID3DBlob> psBytes;
             if (!includePath.empty()) {
                 utilities::shader::IncludeHeader includes({std::move(includePath)});
@@ -1357,6 +1358,17 @@ namespace {
             desc.PS = {reinterpret_cast<BYTE*>(psBytes->GetBufferPointer()), psBytes->GetBufferSize()};
             desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
             desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+            if (alphaBlend) {
+                auto& rt = desc.BlendState.RenderTarget[0];
+                rt.BlendEnable           = TRUE;
+                rt.SrcBlend              = D3D12_BLEND_SRC_ALPHA;
+                rt.DestBlend             = D3D12_BLEND_INV_SRC_ALPHA;
+                rt.BlendOp               = D3D12_BLEND_OP_ADD;
+                rt.SrcBlendAlpha         = D3D12_BLEND_ONE;
+                rt.DestBlendAlpha        = D3D12_BLEND_ZERO;
+                rt.BlendOpAlpha          = D3D12_BLEND_OP_ADD;
+                rt.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+            }
             desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
             desc.SampleMask = UINT_MAX;
             desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;

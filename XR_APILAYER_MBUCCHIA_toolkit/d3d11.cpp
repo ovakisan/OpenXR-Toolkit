@@ -304,8 +304,8 @@ void main(uint3 id : SV_DispatchThreadID)
     // Wrap a pixel shader resource. Obtained from D3D11Device.
     class D3D11QuadShader : public IQuadShader {
       public:
-        D3D11QuadShader(std::shared_ptr<IDevice> device, ID3D11PixelShader* pixelShader)
-            : m_device(device), m_pixelShader(pixelShader) {
+        D3D11QuadShader(std::shared_ptr<IDevice> device, ID3D11PixelShader* pixelShader, bool alphaBlend = false)
+            : m_device(device), m_pixelShader(pixelShader), m_alphaBlend(alphaBlend) {
         }
 
         Api getApi() const override {
@@ -320,9 +320,14 @@ void main(uint3 id : SV_DispatchThreadID)
             return get(m_pixelShader);
         }
 
+        bool wantsAlphaBlend() const {
+            return m_alphaBlend;
+        }
+
       private:
         const std::shared_ptr<IDevice> m_device;
         const ComPtr<ID3D11PixelShader> m_pixelShader;
+        const bool m_alphaBlend;
     };
 
     // Wrap a compute shader resource. Obtained from D3D11Device.
@@ -1120,7 +1125,8 @@ void main(uint3 id : SV_DispatchThreadID)
                                                       const std::string& entryPoint,
                                                       std::string_view debugName,
                                                       const D3D_SHADER_MACRO* defines,
-                                                      std::filesystem::path includePath = "") override {
+                                                      std::filesystem::path includePath = "",
+                                                      bool alphaBlend = false) override {
             ComPtr<ID3DBlob> psBytes;
             if (!includePath.empty()) {
                 utilities::shader::IncludeHeader includes({std::move(includePath)});
@@ -1137,7 +1143,7 @@ void main(uint3 id : SV_DispatchThreadID)
 
             SetDebugName(get(compiledShader), debugName);
 
-            return std::make_shared<D3D11QuadShader>(shared_from_this(), get(compiledShader));
+            return std::make_shared<D3D11QuadShader>(shared_from_this(), get(compiledShader), alphaBlend);
         }
 
         std::shared_ptr<IComputeShader> createComputeShader(const std::filesystem::path& shaderFile,
@@ -1176,7 +1182,9 @@ void main(uint3 id : SV_DispatchThreadID)
 
             if (auto shader11 = shader->getAs<D3D11>()) {
                 // Prepare to draw the quad.
-                m_context->OMSetBlendState(nullptr, nullptr, 0xffffffff);
+                const auto* d3d11Shader = dynamic_cast<const D3D11QuadShader*>(shader.get());
+                const bool wantAlpha = d3d11Shader && d3d11Shader->wantsAlphaBlend();
+                m_context->OMSetBlendState(wantAlpha ? get(m_alphaBlendState) : nullptr, nullptr, 0xffffffff);
                 m_context->OMSetDepthStencilState(nullptr, 0);
                 m_context->IASetIndexBuffer(nullptr, DXGI_FORMAT_UNKNOWN, 0);
                 m_context->IASetVertexBuffers(0, 0, nullptr, nullptr, nullptr);
@@ -1699,6 +1707,19 @@ void main(uint3 id : SV_DispatchThreadID)
                 CHECK_HRCMD(m_device->CreateRasterizerState(&desc, set(m_quadRasterizerMSAA)));
             }
             {
+                D3D11_BLEND_DESC blendDesc;
+                ZeroMemory(&blendDesc, sizeof(blendDesc));
+                blendDesc.RenderTarget[0].BlendEnable           = TRUE;
+                blendDesc.RenderTarget[0].SrcBlend              = D3D11_BLEND_SRC_ALPHA;
+                blendDesc.RenderTarget[0].DestBlend             = D3D11_BLEND_INV_SRC_ALPHA;
+                blendDesc.RenderTarget[0].BlendOp               = D3D11_BLEND_OP_ADD;
+                blendDesc.RenderTarget[0].SrcBlendAlpha         = D3D11_BLEND_ONE;
+                blendDesc.RenderTarget[0].DestBlendAlpha        = D3D11_BLEND_ZERO;
+                blendDesc.RenderTarget[0].BlendOpAlpha          = D3D11_BLEND_OP_ADD;
+                blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+                CHECK_HRCMD(m_device->CreateBlendState(&blendDesc, set(m_alphaBlendState)));
+            }
+            {
                 ComPtr<ID3DBlob> vsBytes;
                 toolkit::utilities::shader::CompileShader(QuadVertexShader, "vsMain", set(vsBytes), "vs_5_0");
 
@@ -2005,6 +2026,7 @@ void main(uint3 id : SV_DispatchThreadID)
         ComPtr<ID3D11SamplerState> m_samplers[2];
         ComPtr<ID3D11RasterizerState> m_quadRasterizer;
         ComPtr<ID3D11RasterizerState> m_quadRasterizerMSAA;
+        ComPtr<ID3D11BlendState> m_alphaBlendState;
         ComPtr<ID3D11VertexShader> m_quadVertexShader;
         ComPtr<ID3D11DepthStencilState> m_reversedZDepthNoStencilTest;
         ComPtr<ID3D11VertexShader> m_meshVertexShader;

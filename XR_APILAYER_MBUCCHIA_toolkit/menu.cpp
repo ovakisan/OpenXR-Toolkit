@@ -1774,7 +1774,7 @@ namespace {
                 return m_configManager->peekEnumValue<FovModeType>(SettingFOVType) == FovModeType::Simple;
             });
             m_menuEntries.push_back(
-                {MenuIndent::SubGroupIndent, "Adjustment", MenuEntryType::Slider, SettingFOV, 50, 100, [&](int value) {
+                {MenuIndent::SubGroupIndent, "Adjustment", MenuEntryType::Slider, SettingFOV, 30, 100, [&](int value) {
                      return fmt::format(
                          "{}% ({:.1f}\xB0)", value, m_stats.fov[1].angleRight - m_stats.fov[0].angleLeft);
                  }});
@@ -1784,12 +1784,12 @@ namespace {
                 return m_configManager->peekEnumValue<FovModeType>(SettingFOVType) == FovModeType::Advanced;
             });
             m_menuEntries.push_back(
-                {MenuIndent::SubGroupIndent, "Up", MenuEntryType::Slider, SettingFOVUp, 50, 100, [&](int value) {
+                {MenuIndent::SubGroupIndent, "Up", MenuEntryType::Slider, SettingFOVUp, 30, 100, [&](int value) {
                      return fmt::format(
                          "{}% ({:.1f}\xB0/{:.1f}\xB0)", value, m_stats.fov[0].angleUp, m_stats.fov[1].angleUp);
                  }});
             m_menuEntries.push_back(
-                {MenuIndent::SubGroupIndent, "Down", MenuEntryType::Slider, SettingFOVDown, 50, 100, [&](int value) {
+                {MenuIndent::SubGroupIndent, "Down", MenuEntryType::Slider, SettingFOVDown, 30, 100, [&](int value) {
                      return fmt::format(
                          "{}% ({:.1f}\xB0/{:.1f}\xB0)", value, m_stats.fov[0].angleDown, m_stats.fov[1].angleDown);
                  }});
@@ -1798,7 +1798,7 @@ namespace {
                  "Left/Left",
                  MenuEntryType::Slider,
                  SettingFOVLeftLeft,
-                 50,
+                 30,
                  100,
                  [&](int value) { return fmt::format("{}% ({:.1f}\xB0)", value, m_stats.fov[0].angleLeft); }});
             m_menuEntries.push_back(
@@ -1806,7 +1806,7 @@ namespace {
                  "Left/Right",
                  MenuEntryType::Slider,
                  SettingFOVLeftRight,
-                 50,
+                 30,
                  100,
                  [&](int value) { return fmt::format("{}% ({:.1f}\xB0)", value, m_stats.fov[0].angleRight); }});
             m_menuEntries.push_back(
@@ -1814,7 +1814,7 @@ namespace {
                  "Right/Left",
                  MenuEntryType::Slider,
                  SettingFOVRightLeft,
-                 50,
+                 30,
                  100,
                  [&](int value) { return fmt::format("{}% ({:.1f}\xB0)", value, m_stats.fov[1].angleLeft); }});
             m_menuEntries.push_back(
@@ -1822,7 +1822,7 @@ namespace {
                  "Right/Right",
                  MenuEntryType::Slider,
                  SettingFOVRightRight,
-                 50,
+                 30,
                  100,
                  [&](int value) { return fmt::format("{}% ({:.1f}\xB0)", value, m_stats.fov[1].angleRight); }});
             fovAdvancedGroup.finalize();
@@ -1832,10 +1832,61 @@ namespace {
                 {MenuIndent::OptionIndent,
                  "Crop Res to FOV",
                  MenuEntryType::Choice,
-                 "fov_crop2res",
+                 SettingFOVCrop2Res,
                  0,
                  MenuEntry::LastVal<NoYesType>(),
-                 MenuEntry::FmtEnum<NoYesType>}); // crop2fov mod
+                 MenuEntry::FmtEnum<NoYesType>});
+
+            MenuGroup helmetViewGroup(this, [&] { return m_configManager->peekValue(SettingFOVCrop2Res) != 0; });
+            m_menuEntries.push_back({MenuIndent::SubGroupIndent,
+                                     "Helmet View",
+                                     MenuEntryType::Choice,
+                                     SettingHelmetView,
+                                     0,
+                                     MenuEntry::LastVal<NoYesType>(),
+                                     MenuEntry::FmtEnum<NoYesType>});
+
+            MenuGroup helmetSettingsGroup(this, [&] {
+                return m_configManager->peekValue(SettingFOVCrop2Res) != 0 &&
+                       m_configManager->peekValue(SettingHelmetView) != 0;
+            });
+            m_menuEntries.push_back({MenuIndent::SubGroupIndent,
+                                     "Visor Top",
+                                     MenuEntryType::Slider,
+                                     SettingHelmetVisorTop,
+                                     5,
+                                     50,
+                                     [](int value) { return fmt::format("{}%", value); }});
+            m_menuEntries.push_back({MenuIndent::SubGroupIndent,
+                                     "Visor Bottom",
+                                     MenuEntryType::Slider,
+                                     SettingHelmetVisorBottom,
+                                     50,
+                                     95,
+                                     [](int value) { return fmt::format("{}%", value); }});
+            m_menuEntries.push_back({MenuIndent::SubGroupIndent,
+                                     "Visor Left",
+                                     MenuEntryType::Slider,
+                                     SettingHelmetVisorLeft,
+                                     0,
+                                     45,
+                                     [](int value) { return fmt::format("{}%", value); }});
+            m_menuEntries.push_back({MenuIndent::SubGroupIndent,
+                                     "Visor Right",
+                                     MenuEntryType::Slider,
+                                     SettingHelmetVisorRight,
+                                     55,
+                                     100,
+                                     [](int value) { return fmt::format("{}%", value); }});
+            m_menuEntries.push_back({MenuIndent::SubGroupIndent,
+                                     "Brightness",
+                                     MenuEntryType::Slider,
+                                     SettingHelmetBrightness,
+                                     10,
+                                     100,
+                                     [](int value) { return fmt::format("{}%", value); }});
+            helmetSettingsGroup.finalize();
+            helmetViewGroup.finalize();
 
             m_menuEntries.push_back(
                 {MenuIndent::OptionIndent, "Zoom", MenuEntryType::Slider, SettingZoom, 10, 1500, [](int value) {
